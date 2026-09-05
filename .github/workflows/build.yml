@@ -14,28 +14,22 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Extract ZIP project
         run: |
-          rm -rf project temp
+          rm -rf temp
           mkdir temp
           unzip -o WA-SmartBot-Complete-Android-v1.zip -d temp
-
-          echo "Moving project files..."
-
           find temp -mindepth 1 -maxdepth 1 ! -name ".github" -exec mv {} . \;
-
           rm -rf temp
 
       - name: Fix Android notification listener XML
         run: |
-          if [ -f "app/src/main/res/xml/notification_listener.xml" ]; then
-            cat > app/src/main/res/xml/notification_listener.xml <<'EOF'
-            <notification-listener xmlns:android="http://schemas.android.com/apk/res/android" />
-            EOF
+          FILE="app/src/main/res/xml/notification_listener.xml"
+          if [ -f "$FILE" ]; then
+            sed -i 's/android:default_filter_types="[^"]*"//g' "$FILE"
           fi
 
       - name: Set up Java
@@ -48,20 +42,14 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Make Gradle executable
-        run: |
-          chmod +x gradlew || true
+        run: chmod +x gradlew
 
       - name: Build APK
-        run: |
-          if [ -f "./gradlew" ]; then
-            ./gradlew assembleDebug --no-daemon
-          else
-            gradle assembleDebug --no-daemon
-          fi
+        run: ./gradlew assembleDebug --no-daemon
 
       - name: Find APK
         run: |
-          APK_FILE=$(find . -type f -name "*.apk" | head -n 1)
+          APK_FILE=$(find app/build/outputs/apk -type f -name "*.apk" | head -n 1)
           echo "APK_FILE=$APK_FILE" >> $GITHUB_ENV
           echo "Found APK: $APK_FILE"
 
