@@ -14,83 +14,99 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Extract ZIP project
+      - name: Find ZIP project
+        id: zip
         run: |
-          rm -rf temp project
-          mkdir temp
-          unzip -o WA-SmartBot-Complete-Android-v1.zip -d temp
+          ZIP_FILE=$(find . -maxdepth 2 -type f \( -iname "*.zip" \) | head -n 1)
 
-          echo "ZIP contents:"
-          find temp -maxdepth 3 -type f | head -50
-
-      - name: Locate Android project
-        run: |
-          GRADLEW=$(find temp -type f -name "gradlew" | head -n 1)
-
-          if [ -z "$GRADLEW" ]; then
-            echo "ERROR: gradlew not found"
-            find temp -maxdepth 4 -type f
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ERROR: No ZIP file found"
             exit 1
           fi
 
-          PROJECT_DIR=$(dirname "$GRADLEW")
+          echo "Found ZIP: $ZIP_FILE"
+          echo "zip_file=$ZIP_FILE" >> $GITHUB_OUTPUT
 
-          echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
-          echo "Android project found at: $PROJECT_DIR"
-
-      - name: Fix Android notification listener XML
+      - name: Extract Android project
         run: |
-          FILE="$PROJECT_DIR/app/src/main/res/xml/notification_listener.xml"
+          rm -rf project
+          mkdir -p project
 
-          if [ -f "$FILE" ]; then
-            sed -i 's/android:default_filter_types="[^"]*"//g' "$FILE"
+          unzip -o "${{ steps.zip.outputs.zip_file }}" -d project
+
+          echo "Project files:"
+          find project -maxdepth 3 -type f | head -100
+
+      - name: Locate Android project
+        id: android
+        run: |
+          SETTINGS=$(find project -type f -name "settings.gradle.kts" | head -n 1)
+
+          if [ -z "$SETTINGS" ]; then
+            SETTINGS=$(find project -type f -name "settings.gradle" | head -n 1)
           fi
+
+          if [ -z "$SETTINGS" ]; then
+            echo "ERROR: Android settings.gradle file not found"
+            find project -type f
+            exit 1
+          fi
+
+          PROJECT_DIR=$(dirname "$SETTINGS")
+
+          echo "Android project found: $PROJECT_DIR"
+
+          echo "project_dir=$PROJECT_DIR" >> $GITHUB_OUTPUT
 
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
-
-      - name: Make Gradle executable
-        run: |
-          chmod +x "$PROJECT_DIR/gradlew"
+        with:
+          gradle-version: "8.10"
 
       - name: Build APK
-        working-directory: ${{ env.PROJECT_DIR }}
+        working-directory: ${{ steps.android.outputs.project_dir }}
         run: |
-          ./gradlew assembleDebug --no-daemon
+          gradle assembleDebug --stacktrace
 
       - name: Find APK
+        id: apk
         run: |
-          APK_FILE=$(find "$PROJECT_DIR/app/build/outputs/apk" -type f -name "*.apk" | head -n 1)
+          APK_FILE=$(find "${{ steps.android.outputs.project_dir }}" -type f -name "*.apk" | grep -v "unsigned" | head -n 1)
 
           if [ -z "$APK_FILE" ]; then
             echo "ERROR: APK not found"
+            find "${{ steps.android.outputs.project_dir }}" -type f
             exit 1
           fi
 
-          echo "APK_FILE=$APK_FILE" >> $GITHUB_ENV
-          echo "Found APK: $APK_FILE"
+          echo "APK found: $APK_FILE"
 
-      - name: Upload APK
+          mkdir -p output
+          cp "$APK_FILE" output/MFIX-WA-SmartBot.apk
+
+          echo "apk_path=output/MFIX-WA-SmartBot.apk" >> $GITHUB_OUTPUT
+
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: WA-SmartBot-APK
-          path: ${{ env.APK_FILE }}
+          name: MFIX-WA-SmartBot-APK
+          path: output/MFIX-WA-SmartBot.apk
           if-no-files-found: error
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
-          name: WA SmartBot Build ${{ github.run_number }}
-          files: ${{ env.APK_FILE }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: MFIX WA SmartBot Build ${{ github.run_number }}
+          files: output/MFIX-WA-SmartBot.apk
+          generate_release_notes: true
