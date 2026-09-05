@@ -19,15 +19,32 @@ jobs:
 
       - name: Extract ZIP project
         run: |
-          rm -rf temp
+          rm -rf temp project
           mkdir temp
           unzip -o WA-SmartBot-Complete-Android-v1.zip -d temp
-          find temp -mindepth 1 -maxdepth 1 ! -name ".github" -exec mv {} . \;
-          rm -rf temp
+
+          echo "ZIP contents:"
+          find temp -maxdepth 3 -type f | head -50
+
+      - name: Locate Android project
+        run: |
+          GRADLEW=$(find temp -type f -name "gradlew" | head -n 1)
+
+          if [ -z "$GRADLEW" ]; then
+            echo "ERROR: gradlew not found"
+            find temp -maxdepth 4 -type f
+            exit 1
+          fi
+
+          PROJECT_DIR=$(dirname "$GRADLEW")
+
+          echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
+          echo "Android project found at: $PROJECT_DIR"
 
       - name: Fix Android notification listener XML
         run: |
-          FILE="app/src/main/res/xml/notification_listener.xml"
+          FILE="$PROJECT_DIR/app/src/main/res/xml/notification_listener.xml"
+
           if [ -f "$FILE" ]; then
             sed -i 's/android:default_filter_types="[^"]*"//g' "$FILE"
           fi
@@ -42,14 +59,23 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Make Gradle executable
-        run: chmod +x gradlew
+        run: |
+          chmod +x "$PROJECT_DIR/gradlew"
 
       - name: Build APK
-        run: ./gradlew assembleDebug --no-daemon
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          ./gradlew assembleDebug --no-daemon
 
       - name: Find APK
         run: |
-          APK_FILE=$(find app/build/outputs/apk -type f -name "*.apk" | head -n 1)
+          APK_FILE=$(find "$PROJECT_DIR/app/build/outputs/apk" -type f -name "*.apk" | head -n 1)
+
+          if [ -z "$APK_FILE" ]; then
+            echo "ERROR: APK not found"
+            exit 1
+          fi
+
           echo "APK_FILE=$APK_FILE" >> $GITHUB_ENV
           echo "Found APK: $APK_FILE"
 
