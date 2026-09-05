@@ -1,4 +1,4 @@
-name: Build WA SmartBot APK
+name: Build Mfix WhatsApp Bot APK
 
 on:
   push:
@@ -10,26 +10,25 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Find ZIP project
-        id: find_zip
-        run: |
-          ZIP_FILE=$(find . -maxdepth 1 -type f -name "*.zip" | head -n 1)
-          echo "ZIP_FILE=$ZIP_FILE" >> $GITHUB_ENV
-          echo "Found ZIP: $ZIP_FILE"
-
       - name: Extract ZIP project
         run: |
+          rm -rf project temp
           mkdir temp
-          unzip "$ZIP_FILE" -d temp
-
+          unzip -q WA-SmartBot-Complete-Android-v1.zip -d temp
           shopt -s dotglob
-          cp -r temp/* .
-
+          mv temp/* .
           rm -rf temp
+
+      - name: Fix Android notification listener XML
+        run: |
+          mkdir -p app/src/main/res/xml
+          cat > app/src/main/res/xml/notification_listener.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <notification-listener xmlns:android="http://schemas.android.com/apk/res/android" />
+          EOF
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -42,24 +41,23 @@ jobs:
 
       - name: Make Gradle executable
         run: |
-          chmod +x gradlew 2>/dev/null || true
+          chmod +x gradlew || true
 
       - name: Build APK
         run: |
           if [ -f "./gradlew" ]; then
-            ./gradlew assembleDebug
+            ./gradlew assembleDebug --stacktrace
           else
-            gradle assembleDebug
+            gradle assembleDebug --stacktrace
           fi
 
       - name: Find APK
         run: |
-          APK_FILE=$(find . -type f -name "*.apk" | head -n 1)
-          echo "APK_FILE=$APK_FILE" >> $GITHUB_ENV
-          echo "Found APK: $APK_FILE"
+          find . -type f -name "*.apk"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: WA-SmartBot-APK
-          path: ${{ env.APK_FILE }}
+          name: Mfix-WhatsApp-Bot-APK
+          path: "**/build/outputs/apk/debug/*.apk"
+          if-no-files-found: error
